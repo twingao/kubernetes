@@ -1,0 +1,45 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emptydir-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emptydir
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: emptydir
+    spec:
+      #定义emptyDir存储卷，名称my-emptydir-vol
+      volumes:
+        - name: my-emptydir-vol
+          emptyDir: {}
+      containers:
+        - name: busybox
+          image: busybox:latest
+          volumeMounts:
+            #关联存储卷名称
+            - name: my-emptydir-vol
+              #容器内目录，nfs的共享目录就是Mount到该目录的
+              mountPath: /data
+          command:
+          - "/bin/sh"
+          - "-c"
+          - "while true; do echo $NODE_NAME : $POD_NAME : $POD_IP >> /data/hello.txt; sleep 2; done"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP

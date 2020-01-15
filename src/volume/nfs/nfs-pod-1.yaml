@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nfs-pod-1
+spec:
+  nodeName: k8s-node1
+  volumes:
+    - name: my-nfs-vol
+      nfs:
+        #nfs服务器上创建的共享目录
+        path: /data/vol
+        #nfs服务器IP地址
+        server: 192.168.1.80
+  containers:
+    - name: busybox
+      image: busybox:latest
+      volumeMounts:
+        #关联存储卷名称
+        - name: my-nfs-vol
+          #容器内目录，nfs的共享目录就是Mount到该目录的
+          mountPath: /data
+      command:
+      - "/bin/sh"
+      - "-c"
+      - "while true; do echo 'nfs-pod-1' >> /data/hello.txt; sleep 2; done"

@@ -54,7 +54,7 @@ PV由系统管理员创建和维护，系统管理员会根据后端存储系统
         - ReadOnlyMany
       #后端共享存储访问参数
       nfs:
-        path: /data/static-pv
+        path: /data/pvpvc
         server: 192.168.1.80
     
     vi my-nfs-pvc.yaml
@@ -376,7 +376,7 @@ NFS服务器有文件创建。
         requests:
           storage: 200Mi
 
-    kubectl apply -f my-sc-pvc-rwm-200m.yaml
+    kubectl apply -f my-sc-pvc-rwx-200m.yaml
     
     kubectl get pvc
     NAME                 STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
@@ -391,11 +391,11 @@ NFS服务器有文件创建。
 删除Pod和PVC，再到NFS服务器查看，看到共享存储目录已经改为归档archived-default-my-sc-pvc-pvc-430a5b2f-36df-4a41-9432-0005aa5a460c，并且其中文件仍然存在。如果要重新使用需要手动操作了。
 
     kubectl delete -f my-sc-pod.yaml
-    kubectl delete -f my-sc-pvc.yaml
+    kubectl delete -f my-sc-pvc-rwo-100m.yaml
 
     cd /data/sc
     ls
-    default-my-sc-pvc-rwm-200m-pvc-f987075d-aa2c-4d7b-a19e-607e2416af72  archived-default-my-sc-pvc-rwo-100m-pvc-9640b177-0c66-42b0-9ede-cffa59a82673
+    default-my-sc-pvc-rwx-200m-pvc-f987075d-aa2c-4d7b-a19e-607e2416af72  archived-default-my-sc-pvc-rwo-100m-pvc-9640b177-0c66-42b0-9ede-cffa59a82673
     cd archived-default-my-sc-pvc-rwo-100m-pvc-9640b177-0c66-42b0-9ede-cffa59a82673/
     ls
     hello.txt

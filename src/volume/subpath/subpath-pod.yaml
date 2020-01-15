@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: subpath-pod
+spec:
+  volumes:
+    - name: my-hostpath-vol
+      hostPath:
+        path: /data/hostpath-2
+        type: DirectoryOrCreate
+  containers:
+    - name: busybox-1
+      image: busybox:latest
+      command:
+      - "/bin/sh"
+      - "-c"
+      - "echo 'hello subpath-1' > /data/subpath-1.txt; sleep 3600" 
+      volumeMounts:
+      - name: my-hostpath-vol
+        mountPath: /data
+        subPath: subpath-1
+    - name: busybox-2
+      image: busybox:latest
+      command:
+      - "/bin/sh"
+      - "-c"
+      - "echo 'hello subpath-2' > /data/subpath-2.txt; sleep 3600" 
+      volumeMounts:
+      - name: my-hostpath-vol
+        mountPath: /data
+        subPath: subpath-2

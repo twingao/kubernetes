@@ -125,6 +125,98 @@ emptyDir支持内存作为存储资源，emptyDir.medium设为Memory即可，但
     #在k8s-node1节点
     ls /var/lib/kubelet/pods/
 
+下面看一下Pod漂移的效果。由于直接创建Pod，node节点重启不会漂移，所以我们以Deployment创建。Kubernetes缺省配置下，在node重启后，如果5分钟内重启来，kubelet会重启Pod，否则会将Pod调度到其它node节点。
+
+    vi emptydir-deployment.yaml
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: emptydir-deployment
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: emptydir
+      strategy: {}
+      template:
+        metadata:
+          labels:
+            app: emptydir
+        spec:
+          #定义emptyDir存储卷，名称my-emptydir-vol
+          volumes:
+            - name: my-emptydir-vol
+              emptyDir: {}
+          containers:
+            - name: busybox
+              image: busybox:latest
+              volumeMounts:
+                #关联存储卷名称
+                - name: my-emptydir-vol
+                  #容器内目录，nfs的共享目录就是Mount到该目录的
+                  mountPath: /data
+              command:
+              - "/bin/sh"
+              - "-c"
+              - "while true; do echo $POD_NAME : $POD_IP >> /data/hello.txt; sleep 2; done"
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
+    
+    kubectl apply -f emptydir-deployment.yaml
+
+Pod被调度到k8s-node2节点。
+
+    kubectl get pod -o wide
+    NAME                                        READY   STATUS    RESTARTS   AGE     IP            NODE        NOMINATED NODE   READINESS GATES
+    emptydir-deployment-6f4fbf66c4-c5lnw        1/1     Running   0          2m59s   10.244.2.42   k8s-node2   <none>           <none>
+    
+    kubectl exec -it emptydir-deployment-6f4fbf66c4-c5lnw sh
+    cat /data/hello.txt
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    k8s-node2 : emptydir-deployment-6f4fbf66c4-c5lnw : 10.244.2.42
+    
+关闭k8s-node2节点，等待5分钟后，查看Pod状态，发现原来的Pod状态为Terminating，新Pod被调度到k8s-node1节点。
+
+    kubectl get pod -o wide
+    NAME                                                     READY   STATUS        RESTARTS   AGE     IP            NODE        NOMINATED NODE   READINESS GATES
+    emptydir-deployment-6f4fbf66c4-c5lnw                     1/1     Terminating   0          9m45s   10.244.2.42   k8s-node2   <none>           <none>
+    emptydir-deployment-6f4fbf66c4-w4hkd                     1/1     Running       0          34s     10.244.1.54   k8s-node1   <none>           <none>
+
+重启k8s-node2节点，旧Pod会被删除，其emptyDir中的数据也随之被删除。
+
+    kubectl get pod -o wide
+    NAME                                                     READY   STATUS    RESTARTS   AGE     IP            NODE        NOMINATED NODE   READINESS GATES
+    emptydir-deployment-6f4fbf66c4-w4hkd                     1/1     Running   0          4m28s   10.244.1.54   k8s-node1   <none>           <none>
+
+可以进入新Pod查看，并没有旧Pod产生的数据。
+
+    kubectl exec -it emptydir-deployment-6f4fbf66c4-w4hkd sh
+    cat /data/hello.txt
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+    k8s-node1 : emptydir-deployment-6f4fbf66c4-w4hkd : 10.244.1.54
+
 ## hostPath
 
 hostPath存储卷为pod挂载宿主机上的目录或文件，使得容器可以使用宿主机的文件系统进行存储。缺点是不提供Pod的亲和性，即hostPath映射的目录在node1，当Pod可能被调度到node2，导致原来的在node1的数据不存在，Pod一直无法启动起来。
@@ -191,7 +283,7 @@ hostPath存储卷类型
 
 ## NFS
 
-emptyDir在Pod销毁时会自动删除，hostPath无法随着Pod在node节点之间漂移。和NFS不同，NFS服务器独立提供共享文件系统，Pod直接Mount共享目录，Pod漂移到另一个node节点时，会重新自动Mount共享目录，数据不会丢失，可以在Pod和node之间共享。
+emptyDir在Pod销毁时会自动删除，hostPath无法随着Pod在node节点之间漂移。和emptyDir和hostPath不同，NFS服务器独立提供共享文件系统，Pod直接Mount共享目录，Pod漂移到另一个node节点时，会重新自动Mount共享目录，数据不会丢失，可以在Pod和node之间共享。
 
 NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](../nfs/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
 

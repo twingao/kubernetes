@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: emptydir-pod
+spec:
+  #定义emptyDir存储卷，名称my-emptydir-vol
+  volumes:
+    - name: my-emptydir-vol
+      emptyDir: {}
+  containers:
+    - name: busybox-1
+      image: busybox:latest
+      command:
+        - "sleep"
+        - "3600"
+      #将my-emptydir-vol存储卷Mount到容器中
+      volumeMounts:
+        - name: my-emptydir-vol
+          #此路径为容器中目录
+          mountPath: /data-1
+    - name: busybox-2
+      image: busybox:latest
+      command:
+        - "sleep"
+        - "3600"
+      #将my-emptydir-vol存储卷Mount到容器中
+      volumeMounts:
+        - name: my-emptydir-vol
+          mountPath: /data-2
