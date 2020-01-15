@@ -14,7 +14,7 @@ PV由系统管理员创建和维护，系统管理员会根据后端存储系统
 
 ![PV和PVC](images/pv-pvc.jpg)
 
-下面采用NFS共享存储举一个例子进行说明。NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](../nfs/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
+下面采用NFS共享存储举一个例子进行说明。NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](https://github.com/twingao/nfs/blob/master/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
 
     mkdir /data/pvpvc -p
     chmod 777 /data/pvpvc
