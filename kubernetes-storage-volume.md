@@ -285,7 +285,7 @@ hostPath存储卷类型
 
 emptyDir在Pod销毁时会自动删除，hostPath无法随着Pod在node节点之间漂移。和emptyDir和hostPath不同，NFS服务器独立提供共享文件系统，Pod直接Mount共享目录，Pod漂移到另一个node节点时，会重新自动Mount共享目录，数据不会丢失，可以在Pod和node之间共享。
 
-NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](https://github.com/twingao/nfs/blob/master/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
+NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](../nfs/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
 
     mkdir /data/vol -p
     chmod 777 /data/vol

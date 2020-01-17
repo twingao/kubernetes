@@ -14,7 +14,7 @@ PV由系统管理员创建和维护，系统管理员会根据后端存储系统
 
 ![PV和PVC](images/pv-pvc.jpg)
 
-下面采用NFS共享存储举一个例子进行说明。NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](https://github.com/twingao/nfs/blob/master/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
+下面采用NFS共享存储举一个例子进行说明。NFS服务器的搭建请参见[NFS v4的安装和使用-CentOS 7](../nfs/nfs-v4-centos-installation-introduction.md)。并创建一个新的共享目录。
 
     mkdir /data/pvpvc -p
     chmod 777 /data/pvpvc
@@ -399,3 +399,135 @@ NFS服务器有文件创建。
     cd archived-default-my-sc-pvc-rwo-100m-pvc-9640b177-0c66-42b0-9ede-cffa59a82673/
     ls
     hello.txt
+
+### LocalVolume
+
+LocalVolume本地数据卷允许用户通过标准PVC接口以简单且可移植的方式访问node节点的本地存储。PV的定义中需要包含描述节点亲和性的信息，Kubernetes系统则使用该信息将容器调度到正确的node节点。本地数据卷（Local Volume）代表一个本地存储设备，比如磁盘、分区或者目录等。主要的应用场景包括分布式存储和数据库等需要高性能和高可靠性的环境里。
+
+LocalVolume和hostpath的区别：
+- 二者都基于node节点本地存储资源实现了容器内数据的持久化功能，都为某些特殊场景下提供了更为适用的存储解决方案；
+- 二者都为k8s存储管理提供了PV、PVC和StorageClass的方法实现；
+- LocalVolume实现的StorageClass不具备完整功能，目前只支持卷的延迟绑定；
+- hostPath是单节点的本地存储卷方案，不提供任何基于node节点亲和性的pod调度管理支持；
+- Localvolume适用于小规模的、多节点的k8s开发或测试环境，尤其是在不具备一套安全、可靠且性能有保证的存储集群服务时；
+
+下面演示一下LocalVolume的使用。先创建一个StorageClass，供应者为kubernetes.io/no-provisioner，WaitForFirstConsumer表示PV不要立即绑定PVC，而是直到有Pod需要用PVC的时候才绑定。调度器会在调度时综合考虑选择合适的Local PV，这样就不会导致跟Pod资源设置selectors，affinity and anti-affinity策略等产生冲突。很明显：如果PVC先跟Local PV绑定了，由于Local PV是跟node绑定的，这样selectors，affinity等等就基本没用了，所以更好的做法是先根据调度策略选择node，然后再绑定Local PV。
+
+    mkdir -p /data/lv
+    
+    vi lv-sc.yaml
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: lv-sc
+    provisioner: kubernetes.io/no-provisioner
+    volumeBindingMode: WaitForFirstConsumer
+    
+    vi lv-pv.yaml
+    ---
+    apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      name: lv-pv
+    spec:
+      capacity:
+        storage: 100Mi
+      accessModes:
+      - ReadWriteOnce
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: lv-sc
+      local:
+        path: /data/lv
+      nodeAffinity:
+        required:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+              - k8s-node1
+    
+    kubectl apply -f lv-sc.yaml
+    kubectl apply -f lv-pv.yaml
+    
+    kubectl get sc
+    NAME         PROVISIONER                                            AGE
+    lv-sc        kubernetes.io/no-provisioner                           45s
+    
+    kubectl get pv
+    NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+    lv-pv   100Mi      RWO            Retain           Available           lv-sc                   17s
+
+接下来创建PVC，可以看出PV和PVC没有绑定。
+
+    vi lv-pvc.yaml
+    ---
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: lv-pvc
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 100Mi
+      storageClassName: lv-sc
+    
+    kubectl apply -f lv-pvc.yaml
+    
+    kubectl get pv
+    NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+    lv-pv   100Mi      RWO            Retain           Available           lv-sc                   8m30s
+    
+    kubectl get pvc
+    NAME     STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+    lv-pvc   Pending                                      lv-sc          9s
+
+创建Pod，Pod中没有指定调度node，但确实被调度到了k8s-node1，是根据PV的node亲和性策略调度的，并且PV和PVC绑定了。
+
+    vi lv-pod.yaml
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: lv-pod
+    spec:
+      volumes:
+        - name: lv-vol
+          persistentVolumeClaim:
+            claimName: lv-pvc
+      containers:
+        - name: busybox
+          image: busybox:latest
+          volumeMounts:
+            - name: lv-vol
+              mountPath: /data
+          command:
+          - "/bin/sh"
+          - "-c"
+          - "while true; do echo 'hello world' >> /data/hello.txt; sleep 10; done"
+    
+    kubectl apply -f lv-pod.yaml
+
+    kubectl get pod -o wide
+    NAME        READY   STATUS    RESTARTS   AGE     IP            NODE        NOMINATED NODE   READINESS GATES
+    lv-pod      1/1     Running   0          16s     10.244.1.55   k8s-node1   <none>           <none>
+    
+    kubectl get pv
+    NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM            STORAGECLASS   REASON   AGE
+    lv-pv   100Mi      RWO            Retain           Bound    default/lv-pvc   lv-sc                   41s
+    
+    kubectl get pvc
+    NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+    lv-pvc   Bound    lv-pv    100Mi      RWO            lv-sc          37s
+
+可以在k8s-node1节点查看。
+
+    cat /data/lv/hello.txt
+    hello world
+    hello world
+    hello world
+    hello world
+

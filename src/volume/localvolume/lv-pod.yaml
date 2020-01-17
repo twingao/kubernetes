@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lv-pod
+spec:
+  volumes:
+    - name: lv-vol
+      persistentVolumeClaim:
+        claimName: lv-pvc
+  containers:
+    - name: busybox
+      image: busybox:latest
+      volumeMounts:
+        - name: lv-vol
+          mountPath: /data
+      command:
+      - "/bin/sh"
+      - "-c"
+      - "while true; do echo 'hello world' >> /data/hello.txt; sleep 10; done"
